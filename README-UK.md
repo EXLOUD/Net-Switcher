@@ -26,7 +26,7 @@
 
   **Мова:** [English](README.md) | [Українська](#)
 
-  ![Version](https://img.shields.io/badge/Version-v1.0.0-6d4dee?style=for-the-badge)
+  ![Version](https://img.shields.io/badge/Version-v1.5.0-6d4dee?style=for-the-badge)
   ![Root](https://img.shields.io/badge/Magisk%20%7C%20KernelSU%20%7C%20APatch-222222?style=for-the-badge)
   ![Network](https://img.shields.io/badge/iptables-ізоляція_додатків-success?style=for-the-badge)
 
