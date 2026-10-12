@@ -1,7 +1,0 @@
-id=net-switch
-name=Net Switch
-version=1.3
-versionCode=55
-author=Rem01Gaming, Antonio-Riccio
-description=Isolate apps from Internet access.
-updateJson=https://raw.githubusercontent.com/Rem01Gaming/net-switch/main/update.json
