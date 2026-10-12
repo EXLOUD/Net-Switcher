@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#0b0c0f">
+<meta name="description" content="Net Switcher — per-app internet isolation for Magisk, KernelSU and APatch.">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data: ksu:; connect-src 'self'; base-uri 'self'; form-action 'self'; object-src 'none'">
+<link rel="icon" href="data:,">
+<title>Net Switcher</title>
+<link rel="stylesheet" href="style.css?v=36">
+</head>
+<body>
+<div class="app">
+  <header class="header">
+    <div class="logo" id="logo">Net <b>Switch</b></div>
+    <div class="header-actions">
+      <button type="button" class="ev-btn" id="evBtn" aria-haspopup="dialog" aria-label="Events"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg><i class="ev-cnt hidden" id="evCnt"></i></button>
+      <div class="lang-wrap">
+        <button type="button" class="lang-btn" id="langBtn" aria-haspopup="listbox" aria-expanded="false">
+          <span id="langLabel">EN</span><span class="chev">⌄</span>
+        </button>
+        <div class="lang-menu" id="langMenu" role="listbox"></div>
+      </div>
+      <div class="bridge" id="bridge" title="Bridge"><i class="dot is-off" id="bridge-dot"></i></div>
+    </div>
+  </header>
+
+  <div id="no-bridge" class="banner hidden">
+    <p class="banner-title"></p>
+    <p class="banner-text"></p>
+  </div>
+
+  <div id="alert" class="banner alert hidden" role="alert">
+    <div class="alert-body"><p class="banner-title"></p><p class="banner-text"></p></div>
+    <button type="button" class="alert-close" id="alertClose" aria-label="Close">×</button>
+  </div>
+
+  <main id="main"></main>
+
+  <nav class="nav" id="nav" role="tablist" aria-label="Net Switcher"></nav>
+</div>
+
+<div class="modal hidden" id="evModal" role="dialog" aria-modal="true" aria-labelledby="evTitle">
+  <div class="modal-card">
+    <div class="modal-head"><b id="evTitle"></b><span id="evMeta"></span></div>
+    <div class="log" id="evLog"></div>
+    <button type="button" class="btn grow" id="evClose"></button>
+  </div>
+</div>
+
+<div class="modal hidden" id="fbModal" role="dialog" aria-modal="true" aria-labelledby="fbTitle">
+  <div class="modal-card">
+    <div class="modal-head"><b id="fbTitle"></b></div>
+    <div class="fb-path" id="fbPath"></div>
+    <div class="log" id="fbList"></div>
+    <button type="button" class="btn grow" id="fbSelect"></button>
+    <button type="button" class="btn ghost grow" id="fbClose"></button>
+  </div>
+</div>
+
+<div class="busy hidden" id="busy" aria-live="polite"><div class="spinner"></div><span id="busyText"></span></div>
+<div class="toast" id="toast" role="status"></div>
+
+<script src="locales/index.js?v=36"></script>
+<script src="locales/en.js?v=36"></script>
+<script src="locales/uk.js?v=36"></script>
+<script src="locales/it.js?v=36"></script>
+<script src="locales/es.js?v=36"></script>
+<script src="locales/fr.js?v=36"></script>
+<script src="locales/ru.js?v=36"></script>
+<script src="locales/zh.js?v=36"></script>
+<script src="locales/ja.js?v=36"></script>
+<script src="locales/ko.js?v=36"></script>
+<script src="locales/pt.js?v=36"></script>
+<script src="locales/de.js?v=36"></script>
+<script src="locales/hi.js?v=36"></script>
+<script src="locales/ar.js?v=36"></script>
+<script type="module" src="script.js"></script>
+</body>
+</html>

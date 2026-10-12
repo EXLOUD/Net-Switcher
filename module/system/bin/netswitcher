@@ -1,0 +1,257 @@
+#!/bin/sh
+# Net Switcher — per-app, per-channel (Wi-Fi / Mobile / LAN / VPN) network isolation via iptables.
+#
+# Storage (single source of truth):  $CFG_DIR/rules.conf   one line per app:  <package>=<blocked,channels>
+# isolated.json is still written (every app with at least one blocked channel) for backward compatibility.
+
+CFG_DIR="${NS_CFG_DIR:-/data/adb/.config/net-switcher}"
+PKGLIST="${NS_PKGLIST:-/data/system/packages.list}"
+RULES="$CFG_DIR/rules.conf"
+JSON_FILE="$CFG_DIR/isolated.json"
+
+ALL_CH="wifi,mobile,lan,vpn"
+
+# Interface groups (the '+' suffix is the iptables wildcard)
+IF_WIFI="wlan+ tiwlan+ wifi+ eth+ rndis+ usb+ ncm+"
+IF_MOBILE="rmnet+ ccmni+ pdp+ wwan+ v4-rmnet+ v4-ccmni+ seth_w+ uwwan+"
+IF_VPN="tun+ tap+ wg+ ppp+ ipsec+ vpn+"
+# "LAN" = private / link-local / multicast destinations on wired & wireless interfaces
+V4_LAN="10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 169.254.0.0/16 224.0.0.0/4"
+V6_LAN="fc00::/7 fe80::/10 ff00::/8"
+
+# xtables lock wait, if this iptables supports it
+W=""
+iptables -w 5 -S OUTPUT >/dev/null 2>&1 && W="-w 5"
+
+cli_usage() {
+	cat <<EOF
+Usage: netswitcher <command> [args]
+Commands:
+  block [-c <channels>] <package...>   Block channels for packages (default: all channels)
+  unblock <package...|all>             Remove every restriction from packages (or from all)
+  set <package> <channels|all|none>    Set exactly which channels are blocked
+  list                                 Show restricted packages and what is blocked
+  dump                                 Machine-readable list (package=channels)
+  apply                                (Re)apply all saved rules (used at boot)
+
+Channels (comma separated): wifi, mobile, lan, vpn   |   all = every channel
+Example: netswitcher set com.example.app mobile,vpn
+EOF
+}
+
+die() { echo "Error: $*" >&2; exit 1; }
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+valid_pkg() { case "$1" in "" | *[!A-Za-z0-9._]*) return 1 ;; esac; return 0; }
+
+get_uid() { awk -v p="$1" '$1==p{print $2; exit}' "$PKGLIST" 2>/dev/null; }
+
+# canonical, ordered channel list; "all" expands; unknown words are dropped
+norm_ch() {
+	in=",$(echo "$1" | tr 'A-Z ' 'a-z,'),"
+	case "$in" in *,all,*) echo "$ALL_CH"; return ;; esac
+	out=""
+	for c in wifi mobile lan vpn; do
+		case "$in" in *,"$c",*) out="${out:+$out,}$c" ;; esac
+	done
+	echo "$out"
+}
+
+has() { case ",$ch," in *,"$1",*) return 0 ;; esac; return 1; }
+
+read_json() { [ -f "$JSON_FILE" ] && tr -d '[]" \n' <"$JSON_FILE" | tr ',' ' '; }
+
+migrate() {
+	[ -f "$RULES" ] && return 0
+	mkdir -p "$CFG_DIR"
+	: >"$RULES"
+	for p in $(read_json); do
+		valid_pkg "$p" && echo "$p=$ALL_CH" >>"$RULES"
+	done
+}
+
+rules_get() { awk -F= -v p="$1" '$1==p{print $2; exit}' "$RULES" 2>/dev/null; }
+
+rules_set() { # $1 pkg  $2 normalized channels ("" removes)
+	tmp="$RULES.tmp.$$"
+	awk -F= -v p="$1" '$1!=p && NF' "$RULES" >"$tmp" 2>/dev/null
+	[ -n "$2" ] && echo "$1=$2" >>"$tmp"
+	cat "$tmp" >"$RULES"
+	rm -f "$tmp"
+	sync_json
+}
+
+sync_json() {
+	(
+		printf "["
+		first=1
+		for pkg in $(awk -F= 'NF{print $1}' "$RULES"); do
+			[ $first -eq 0 ] && printf ","
+			printf "\"%s\"" "$pkg"
+			first=0
+		done
+		printf "]"
+	) >"$JSON_FILE"
+}
+
+# ── iptables ─────────────────────────────────────────────────────────────────
+# Prints iptables-restore lines for one app. $1 = 4|6, $2 = uid, $3 = channels
+gen_chain() {
+	fam=$1 uid=$2 ch=$3 chain="NS_$2"
+	if [ "$fam" = 6 ]; then ranges="$V6_LAN"; else ranges="$V4_LAN"; fi
+	echo ":$chain - [0:0]"
+	if has wifi && has mobile && has lan && has vpn; then
+		echo "-A $chain -j REJECT"
+	else
+		# LAN stays reachable even though Wi-Fi is blocked
+		if has wifi && ! has lan; then
+			for i in $IF_WIFI; do for r in $ranges; do echo "-A $chain -o $i -d $r -j ACCEPT"; done; done
+		fi
+		# LAN blocked while Wi-Fi is still allowed
+		if has lan && ! has wifi; then
+			for i in $IF_WIFI; do for r in $ranges; do echo "-A $chain -o $i -d $r -j REJECT"; done; done
+		fi
+		has wifi && for i in $IF_WIFI; do echo "-A $chain -o $i -j REJECT"; done
+		has mobile && for i in $IF_MOBILE; do echo "-A $chain -o $i -j REJECT"; done
+		has vpn && for i in $IF_VPN; do echo "-A $chain -o $i -j REJECT"; done
+	fi
+	echo "-I OUTPUT -m owner --uid-owner $uid -j $chain"
+}
+
+# Load a rules file: atomic iptables-restore if possible, else rule by rule
+load_rules() { # $1 = iptables|ip6tables  $2 = file with restore-style lines
+	ipt=$1 f=$2 restore="$1-restore"
+	[ -s "$f" ] || return 0
+	{ echo "*filter"; cat "$f"; echo "COMMIT"; } >"$f.r"
+	if command -v "$restore" >/dev/null 2>&1; then
+		$restore $W --noflush <"$f.r" >/dev/null 2>&1 && { rm -f "$f.r"; return 0; }
+		$restore --noflush <"$f.r" >/dev/null 2>&1 && { rm -f "$f.r"; return 0; }
+	fi
+	rm -f "$f.r"
+	while read -r line; do
+		case "$line" in
+		:*) c="${line%% *}"; c="${c#:}"; $ipt $W -N "$c" 2>/dev/null; $ipt $W -F "$c" 2>/dev/null ;;
+		*) $ipt $W $line ;;
+		esac
+	done <"$f"
+}
+
+remove_uid() { # also removes the legacy single "-j REJECT" rule of old versions
+	for ipt in iptables ip6tables; do
+		while $ipt $W -D OUTPUT -m owner --uid-owner "$1" -j "NS_$1" 2>/dev/null; do :; done
+		while $ipt $W -D OUTPUT -m owner --uid-owner "$1" -j REJECT 2>/dev/null; do :; done
+		$ipt $W -F "NS_$1" 2>/dev/null
+		$ipt $W -X "NS_$1" 2>/dev/null
+	done
+}
+
+clear_all() {
+	for ipt in iptables ip6tables; do
+		$ipt $W -S OUTPUT 2>/dev/null | grep -- '-j NS_' | sed 's/^-A/-D/' | while read -r l; do $ipt $W $l 2>/dev/null; done
+		$ipt $W -S 2>/dev/null | sed -n 's/^-N \(NS_[A-Za-z0-9_]*\).*/\1/p' | while read -r c; do
+			$ipt $W -F "$c" 2>/dev/null
+			$ipt $W -X "$c" 2>/dev/null
+		done
+	done
+}
+
+install_rules() { # $1 uid $2 channels — build + load chains for one app
+	t4="$CFG_DIR/.ns4.$$" t6="$CFG_DIR/.ns6.$$"
+	gen_chain 4 "$1" "$2" >>"$t4"
+	gen_chain 6 "$1" "$2" >>"$t6"
+	load_rules iptables "$t4"
+	load_rules ip6tables "$t6"
+	rm -f "$t4" "$t6"
+}
+
+# ── commands ─────────────────────────────────────────────────────────────────
+cmd_apply() {
+	migrate
+	clear_all
+	t4="$CFG_DIR/.ns4.$$" t6="$CFG_DIR/.ns6.$$"
+	: >"$t4"; : >"$t6"
+	n=0
+	while IFS='=' read -r pkg chans; do
+		valid_pkg "$pkg" || continue
+		ch="$(norm_ch "$chans")"
+		[ -z "$ch" ] && continue
+		uid="$(get_uid "$pkg")"
+		[ -z "$uid" ] && continue
+		remove_uid "$uid" # leftovers from older versions
+		gen_chain 4 "$uid" "$ch" >>"$t4"
+		gen_chain 6 "$uid" "$ch" >>"$t6"
+		n=$((n + 1))
+		echo "net-switcher: $pkg ($uid) blocked: $ch" >/dev/kmsg 2>/dev/null
+	done <"$RULES"
+	load_rules iptables "$t4"
+	load_rules ip6tables "$t6"
+	rm -f "$t4" "$t6"
+	sync_json
+	echo "Applied rules for $n package(s)"
+}
+
+cmd_set() {
+	pkg="$1"
+	valid_pkg "$pkg" || die "Invalid package name"
+	migrate
+	ch="$(norm_ch "$2")"
+	uid="$(get_uid "$pkg")"
+	if [ -z "$uid" ]; then
+		[ -z "$ch" ] && { rules_set "$pkg" ""; echo "Cleared $pkg (package no longer exists)"; return 0; }
+		die "Package '$pkg' not found"
+	fi
+	remove_uid "$uid"
+	[ -n "$ch" ] && install_rules "$uid" "$ch"
+	rules_set "$pkg" "$ch"
+	if [ -n "$ch" ]; then echo "$pkg (UID: $uid) blocked: $ch"; else echo "$pkg (UID: $uid) unrestricted"; fi
+}
+
+cmd_block() {
+	chans="all"
+	if [ "$1" = "-c" ]; then chans="$2"; shift 2; fi
+	[ $# -eq 0 ] && { echo "Error: Bad arguments" >&2; cli_usage; exit 1; }
+	for p in "$@"; do cmd_set "$p" "$chans"; done
+}
+
+cmd_unblock() {
+	[ $# -eq 0 ] && { echo "Error: Bad arguments" >&2; cli_usage; exit 1; }
+	migrate
+	if [ "$1" = "all" ]; then
+		clear_all
+		for p in $(awk -F= 'NF{print $1}' "$RULES"); do
+			u="$(get_uid "$p")"
+			[ -n "$u" ] && remove_uid "$u"
+		done
+		: >"$RULES"
+		sync_json
+		echo "Unblocked all packages"
+		return 0
+	fi
+	for p in "$@"; do cmd_set "$p" none; done
+}
+
+cmd_dump() { migrate; awk -F= 'NF && $2!=""' "$RULES"; }
+
+cmd_list() {
+	migrate
+	if [ ! -s "$RULES" ]; then echo "No packages are currently restricted"; return 0; fi
+	echo "Restricted packages:"
+	while IFS='=' read -r pkg chans; do
+		[ -z "$pkg" ] && continue
+		uid="$(get_uid "$pkg")"
+		if [ -n "$uid" ]; then echo "- $pkg (UID: $uid) blocked: $chans"; else echo "- $pkg (package no longer exists)"; fi
+	done <"$RULES"
+}
+
+mkdir -p "$CFG_DIR" 2>/dev/null
+
+case "$1" in
+block) shift; cmd_block "$@" ;;
+unblock) shift; cmd_unblock "$@" ;;
+set) [ $# -ge 3 ] || { cli_usage; exit 1; }; cmd_set "$2" "$3" ;;
+list) cmd_list ;;
+dump) cmd_dump ;;
+apply) cmd_apply ;;
+help | -h | --help) cli_usage ;;
+*) cli_usage; exit 1 ;;
+esac

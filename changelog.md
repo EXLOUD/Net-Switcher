@@ -1,3 +1,15 @@
+## 1.5
+
+- **NEW**: Per-channel isolation: block Wi-Fi, Mobile data, LAN and VPN separately for every app
+- **NEW**: Profiles and backup merged into a single Profiles tab; Export / Import with an in-app file browser
+- **NEW**: Import validation with a closable error banner for invalid or empty JSON
+- **NEW**: Profile names are limited to Latin characters
+- **NEW**: Recent events moved to a popup opened from the header button
+- **IMPROVED**: Complete translations for all 13 languages
+- **IMPROVED**: Custom scrollbars, redesigned channel buttons, cleaner layout
+- **IMPROVED**: WebUI rewritten as plain HTML/CSS/JS (no build step)
+- **NEW**: New banner, author set to EXLOUD
+
 ## 1.3
 
 - **NEW**: Added Profiles System for app isolation management
