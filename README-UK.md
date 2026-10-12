@@ -12,7 +12,7 @@
   
   ### 👀 Статистика репозиторію
   
-   <img alt="GitHub Views" src="https://count.getloli.com/get/@:EXLOUD-Net-Switcher?theme=rule34" />
+   <img alt="GitHub Views" src="https://count.getloli.com/get/@:EXLOUD-Net-S?theme=rule34" />
 
    **⭐ Якщо інструмент був корисним — поставте зірку! ⭐**
 
