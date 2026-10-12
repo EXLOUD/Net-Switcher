@@ -12,7 +12,7 @@
   
   ### 👀 Repository Stats
   
-   <img alt="GitHub Views" src="https://count.getloli.com/get/@:EXLOUD-Net-S?theme=rule34" />
+   <img alt="GitHub Views" src="https://count.getloli.com/get/@:EXLOUD-Net-Switcher?theme=rule34" />
 
    **⭐ If this tool helped you, please consider giving it a star! ⭐**
 
@@ -22,11 +22,14 @@
 
 <div align="center">
 
+  <img src="assets/webui-apps.png" width="300" alt="Net Switcher WebUI — Apps">
+  <img src="assets/webui-profiles.png" width="300" alt="Net Switcher WebUI — Profiles">
+
   <h1>Net Switcher</h1>
 
   **Language:** [English](#) | [Українська](README-UK.md)
 
-  ![Version](https://img.shields.io/badge/Version-v1.5.0-6d4dee?style=for-the-badge)
+  ![Version](https://img.shields.io/badge/Version-v1.0.0-6d4dee?style=for-the-badge)
   ![Root](https://img.shields.io/badge/Magisk%20%7C%20KernelSU%20%7C%20APatch-222222?style=for-the-badge)
   ![Network](https://img.shields.io/badge/iptables-per--app-isolation-success?style=for-the-badge)
 
